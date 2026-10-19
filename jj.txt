@@ -1,0 +1,453 @@
+Conversation with Gemini
+
+extract all the codes and give them suitable names .
+
+Here are all the code snippets extracted from the provided IPC slides, organized by concept and given suitable descriptive names.   
+PDF
+1. Simple Spooling / Shared Buffer Access (Flawed & Race Conditions)
+
+    Slide Context: Demonstrates race conditions during un-synchronized buffer insertions.   
+    PDF+ 2
+
+C
+
+/* 1.1 Multi-line Buffer Insertion (Race Condition) */
+int next_free = in;
+slot[next_free] = file;
+in = next_free + 1;
+
+/* 1.2 One-line Buffer Insertion (Still causes race condition due to 3 assembly steps) */
+for (;;) {
+    slot[in++] = file;
+}
+
+2. Disabling Interrupts
+
+    Slide Context: Hardware-level mutual exclusion by disabling clock interrupts.   
+    PDF
+
+C
+
+/* Disabling Interrupts Pattern */
+while (true) {
+    /* disable interrupts */;
+    /* critical section */;
+    /* enable interrupts */;
+    /* remainder */;
+}
+
+3. Lock Variables
+
+    Slide Context: Shared flag approach for mutual exclusion (Inadequate/Race Prone).   
+    PDF+ 1
+
+C
+
+/* Shared Lock Variable Approach */
+int lock = 0; // global variable
+
+// ... inside process ...
+while (lock);   // Busy wait
+lock = 1;       // Enter critical section
+access_shared_variable();
+lock = 0;       // Leave critical section
+
+4. Strict Alternation
+
+    Slide Context: Alternating access between two processes using a turn variable.   
+    PDF
+
+C
+
+/* Process 0 */
+while (TRUE) {
+    while (turn != 0)
+        /* loop */;
+    critical_region();
+    turn = 1;
+    noncritical_region();
+}
+
+/* Process 1 */
+while (TRUE) {
+    while (turn != 1)
+        /* loop */;
+    critical_region();
+    turn = 0;
+    noncritical_region();
+}
+
+5. Peterson's Solution (For 2 Processes)
+
+    Slide Context: Software-based mutual exclusion using flags and turn variables.   
+    PDF+ 1
+
+C
+
+#define FALSE 0
+#define TRUE  1
+#define N     2    /* number of processes */
+
+int turn;          /* whose turn is it? */
+int interested[N]; /* all values initially 0 (FALSE) */
+
+void enter_region(int process) {
+    int other;
+    
+    other = 1 - process;            /* the opposite process */
+    interested[process] = TRUE;     /* show that you are interested */
+    turn = process;                 /* set flag */
+    
+    /* Busy wait */
+    while (turn == process && interested[other] == TRUE) 
+        /* null statement */;
+}
+
+void leave_region(int process) {
+    interested[process] = FALSE;    /* indicate departure from critical region */
+}
+
+/* Usage Structure */
+do {
+    enter_region(process_id);
+    /* critical section */
+    leave_region(process_id);
+    /* remainder section */
+} while (TRUE);
+
+6. Sleep and Wakeup Primitive (Producer-Consumer)
+
+    Slide Context: Bounded buffer problem using system calls sleep() and wakeup() (Flawed due to lost wakeups).   
+    PDF
+
+C
+
+#define N 100    /* number of slots in the buffer */
+int count = 0;   /* number of items in the buffer */
+
+void producer(void) {
+    int item;
+    while (TRUE) {
+        item = produce_item();
+        if (count == N) sleep();
+        insert_item(item);
+        count = count + 1;
+        if (count == 1) wakeup(consumer); /* was buffer empty? */
+    }
+}
+
+void consumer(void) {
+    int item;
+    while (TRUE) {
+        if (count == 0) sleep();
+        item = remove_item();
+        count = count - 1;
+        if (count == N - 1) wakeup(producer); /* was buffer full? */
+        consume_item(item);
+    }
+}
+
+7. Semaphore Usage Patterns
+
+    Slide Context: Primitive structures for mutual exclusion and synchronization.   
+    PDF+ 2
+
+C
+
+/* 7.1 Mutual Exclusion with Binary Semaphore */
+do {
+    down(&mutex);
+    // critical section
+    up(&mutex);
+    // remainder section
+} while (TRUE);
+
+/* 7.2 Execution Sequencing / Synchronization (S2 after S1) */
+// Process 1
+S1;
+up(&synch);
+
+// Process 2
+down(&synch);
+S2;
+
+/* 7.3 Ordered Printing ("hello" then "world") */
+// Process 1
+while (1) {
+    print("hello");
+    up(&P2_write);
+}
+
+// Process 2
+while (1) {
+    down(&P2_write);
+    print("world");
+}
+
+8. Producer-Consumer using Semaphores
+
+    Slide Context: Robust bounded buffer synchronization using binary and counting semaphores.   
+    PDF
+
+C
+
+#define N 100            /* number of slots in the buffer */
+typedef int semaphore;  /* semaphores are a special kind of int */
+
+semaphore mutex = 1;     /* controls access to critical region */
+semaphore empty = N;     /* counts empty buffer slots */
+semaphore full = 0;      /* counts full buffer slots */
+
+void producer(void) {
+    int item;
+    while (TRUE) {
+        item = produce_item();
+        down(&empty);
+        down(&mutex);
+        insert_item(item);
+        up(&mutex);
+        up(&full);
+    }
+}
+
+void consumer(void) {
+    int item;
+    while (TRUE) {
+        down(&full);
+        down(&mutex);
+        item = remove_item();
+        up(&mutex);
+        up(&empty);
+        consume_item(item);
+    }
+}
+
+9. Producer-Consumer Solution using Java Monitors
+
+    Slide Context: High-level monitor implementation for multi-threaded thread synchronization.   
+    PDF+ 1
+
+Java
+
+public class ProducerConsumer {
+    static final int N = 100; // buffer size
+    static producer p = new producer();
+    static consumer c = new consumer();
+    static our_monitor mon = new our_monitor();
+
+    public static void main(String args[]) {
+        p.start();
+        c.start();
+    }
+
+    static class producer extends Thread {
+        public void run() {
+            int item;
+            while (true) {
+                item = produce_item();
+                mon.insert(item);
+            }
+        }
+        private int produce_item() { /* generate item */ return 0; }
+    }
+
+    static class consumer extends Thread {
+        public void run() {
+            int item;
+            while (true) {
+                item = mon.remove();
+                consume_item(item);
+            }
+        }
+        private void consume_item(int item) { /* consume item */ }
+    }
+
+    static class our_monitor { // Monitor definition
+        private int buffer[] = new int[N];
+        private int count = 0, lo = 0, hi = 0;
+
+        public synchronized void insert(int val) {
+            if (count == N) go_to_sleep();
+            buffer[hi] = val;
+            hi = (hi + 1) % N;
+            count = count + 1;
+            if (count == 1) notify();
+        }
+
+        public synchronized int remove() {
+            int val;
+            if (count == 0) go_to_sleep();
+            val = buffer[lo];
+            lo = (lo + 1) % N;
+            count = count - 1;
+            if (count == N - 1) notify();
+            return val;
+        }
+
+        private void go_to_sleep() {
+            try { wait(); } catch (InterruptedException exc) {}
+        }
+    }
+}
+
+10. Producer-Consumer with Message Passing
+
+    Slide Context: IPC implementation suitable for distributed systems without shared memory.   
+    PDF
+
+C
+
+#define N 100 /* number of slots in the buffer */
+
+void producer(void) {
+    int item;
+    message m;
+    while (TRUE) {
+        item = produce_item();
+        receive(consumer, &m);      /* wait for an empty reply to arrive */
+        build_message(&m, item);    /* construct message */
+        send(consumer, &m);         /* send item to consumer */
+    }
+}
+
+void consumer(void) {
+    int item, i;
+    message m;
+    
+    for (i = 0; i < N; i++) send(producer, &m); /* send N empty messages */
+    
+    while (TRUE) {
+        receive(producer, &m);      /* get message containing item */
+        item = extract_item(&m);    /* extract item */
+        send(producer, &m);         /* send back empty reply */
+        consume_item(item);         /* consume item */
+    }
+}
+
+11. Dining Philosophers Problem
+
+    Slide Context: Classic process synchronization scenario.   
+    PDF+ 3
+
+11.1 Flawed Naive Approach (Causes Deadlock)
+C
+
+#define N 5
+
+void philosopher(int i) {
+    while (TRUE) {
+        think();
+        take_fork(i);               /* take left fork */
+        take_fork((i + 1) % N);     /* take right fork */
+        eat();
+        put_fork(i);                /* put left fork back */
+        put_fork((i + 1) % N);     /* put right fork back */
+    }
+}
+
+11.2 Single Mutex Lock Approach (Lacks Concurrency)
+C
+
+void philosopher(int i) {
+    while (TRUE) {
+        think();
+        down(&mutex);
+        take_fork(i);
+        take_fork((i + 1) % N);
+        eat();
+        put_fork(i);
+        put_fork((i + 1) % N);
+        up(&mutex);
+    }
+}
+
+11.3 State-based Optimal Solution (Deadlock-Free & Parallelized)   
+C
+
+#define N           5                   /* number of philosophers */
+#define LEFT        (i + N - 1) % N     /* number of i's left neighbor */
+#define RIGHT       (i + 1) % N         /* number of i's right neighbor */
+#define THINKING    0                   /* philosopher is thinking */
+#define HUNGRY      1                   /* philosopher is trying to get forks */
+#define EATING      2                   /* philosopher is eating */
+
+typedef int semaphore;
+
+int state[N];                           /* array to keep track of everyone's state */
+semaphore mutex = 1;                    /* mutual exclusion for critical regions */
+semaphore s[N];                         /* one semaphore per philosopher */
+
+void philosopher(int i) {
+    while (TRUE) {
+        think();
+        take_forks(i);                  /* acquire two forks or block */
+        eat();
+        put_forks(i);                   /* put both forks back on table */
+    }
+}
+
+void take_forks(int i) {
+    down(&mutex);                       /* enter critical region */
+    state[i] = HUNGRY;
+    test(i);                            /* try to acquire 2 forks */
+    up(&mutex);                         /* exit critical region */
+    down(&s[i]);                        /* block if forks were not acquired */
+}
+
+void put_forks(int i) {
+    down(&mutex);                       /* enter critical region */
+    state[i] = THINKING;                /* philosopher finished eating */
+    test(LEFT);                         /* see if left neighbor can now eat */
+    test(RIGHT);                        /* see if right neighbor can now eat */
+    up(&mutex);                         /* exit critical region */
+}
+
+void test(int i) {
+    if (state[i] == HUNGRY && state[LEFT] != EATING && state[RIGHT] != EATING) {
+        state[i] = EATING;
+        up(&s[i]);
+    }
+}
+
+12. Readers and Writers Problem (First Variation - Reader Priority)
+
+    Slide Context: Database concurrency control prioritizing simultaneous reader processes.   
+    PDF
+
+C
+
+typedef int semaphore;
+semaphore mutex = 1;    /* controls access to 'rc' */
+semaphore db = 1;       /* controls access to database */
+int rc = 0;             /* number of processes reading or wanting to */
+
+void reader(void) {
+    while (TRUE) {
+        down(&mutex);
+        rc = rc + 1;
+        if (rc == 1) down(&db);  /* first reader locks database */
+        up(&mutex);
+        
+        read_data_base();
+        
+        down(&mutex);
+        rc = rc - 1;
+        if (rc == 0) up(&db);    /* last reader unlocks database */
+        up(&mutex);
+        
+        use_data_read();
+    }
+}
+
+void writer(void) {
+    while (TRUE) {
+        think_up_data();
+        
+        down(&db);              /* get exclusive access to DB */
+        write_data_base();
+        up(&db);                /* release exclusive access to DB */
+    }
+}
+
+
+Gemini is AI and can make mistakes.
